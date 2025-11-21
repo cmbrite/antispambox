@@ -1,111 +1,81 @@
 # antispambox
 
-## Status
+Antispambox is a Dockerized mailbox filter that keeps IMAP inboxes clean by combining two mature engines—SpamAssassin (via ISBG) and Rspamd (via IRSD). It watches your IMAP inbox using IDLE, learns from ham/spam training folders, and automatically files junk so it never reaches your primary mail client.
 
-**under development**
+## Project origins and credit
+This project is forked from [rsmuc/antispambox](https://github.com/rsmuc/antispambox). The fork maintains the dual‑engine design (SpamAssassin + Rspamd) and IMAP automation introduced there while refreshing documentation and setup guidance.
 
-container should be working basically
+## What the container does
+- Monitors IMAP inboxes with IDLE/push support so messages are processed immediately.
+- Classifies mail with **both** SpamAssassin and Rspamd to balance accuracy and speed.
+- Learns from user-provided training folders (`SPAM_train` and `HAM_train`) to continuously improve detection.
+- Files detected spam to your `JUNK` (or configured) folder; trains on messages you move into training folders.
+- Persists SpamAssassin Bayes data and account configuration via Docker volumes for easy upgrades.
 
-## About
+## Requirements
+- Docker 20.10+
+- IMAP credentials for the account you want to protect
+- Two Docker volumes (or bind mounts) for persistent data:
+  - SpamAssassin Bayes database: `/var/spamassassin/bayesdb`
+  - Account configuration: `/root/accounts`
 
-Antispambox is based on the idea of [IMAPScan](https://github.com/dc55028/imapscan). It's an Docker container including [ISBG](https://github.com/isbg/isbg). With ISBG it's possible to scan remotely an IMAP mailbox for SPAM mails with spamassassin. So we are not dependent to the SPAM filter of our provider.
+## Quick start
+1. **Build the image**
+   ```bash
+docker build -f Dockerfile -t antispambox .
+```
+2. **Create the persistent volumes**
+   ```bash
+sudo docker volume create bayesdb
+sudo docker volume create accounts
+```
+3. **Run the container**
+   ```bash
+sudo docker run -d --name antispambox --restart always \
+  -v bayesdb:/var/spamassassin/bayesdb \
+  -v accounts:/root/accounts \
+  antispambox
+```
 
-Antispambox does have two anti-spam-engines integrated. Spamassassin and RSpamd.
+## Configure accounts
+1. **Open a shell in the running container**
+   ```bash
+docker exec -it antispambox /bin/bash
+```
+2. **Edit account definitions** in `/root/accounts/imap_accounts.json`.
+   - Set IMAP host, port, username, password, and folders for:
+     - `INBOX` (watched with IMAP IDLE)
+     - `JUNK` (where spam is delivered)
+     - `SPAM_train` and `HAM_train` (user-managed training folders)
+   - Leave `enabled` as `false` until initial training data is present.
+3. **Seed training data**
+   - Place at least ~200 ham and ~200 spam messages into the respective training folders. (Copy or move messages in your mail client.)
+4. **Enable scanning**
+   - Set `enabled` to `true` for each account in `imap_accounts.json` once training data exists.
+5. **Restart the container** to pick up the configuration.
+   ```bash
+sudo docker restart antispambox
+```
 
-### Why not IMAPScan?
+## How it works in operation
+- The container listens for new messages on `INBOX` via IMAP IDLE.
+- Each message is evaluated by Rspamd (fast) and SpamAssassin (thorough). Their results are combined to decide whether to move mail to `JUNK`.
+- Messages you move to `SPAM_train` or `HAM_train` are periodically fed back into both engines (SpamAssassin Bayes via ISBG; Rspamd via IRSD) to refine future decisions.
+- Logs are written to `/var/log/antispambox.log` inside the container; use `docker logs antispambox` or inspect the file from a shell.
 
-(Thanks to [dc55028](https://github.com/dc55028) for adding the MIT license to the IMAPScan repository)
+## Maintenance tips
+- **Check learning stats**
+  - SpamAssassin: `sa-learn --dump magic`
+  - Rspamd: `spamc stat`
+- **Upgrade safely**
+  - Because Bayes and account data live on volumes, you can rebuild the image and restart the container without losing training state.
+- **Multiple accounts**
+  - Add more account objects to `imap_accounts.json` and restart the container; each can use its own training folders.
 
-* I prefer Python instead of Bash scripts
-* I made several modifications (see Features) and not all of the modifications would be compatible to the ideas of IMAPScan
-* I integrated push support
-* ...
-
-### Why not ISBG only?
-
-ISBG is only supporting spamassassin as backend. Spamassassin is a very effective, but not very efficient SPAM filter. At home I'm running the docker container on a very small embedded PC with an Atom CPU. On my smartphone I'm using K9Mail with push support. So it is very important that the scanning for SPAM is very fast. With spamassassin it takes too long to filter the mails, so SPAM mails are shown on my smartphone before they are filterd out. The solution: rspamd. 
-
-But rspamd is not supported by ISBG and will not be supported to keep ISBG maintainable. So I forked ISBG and created IRSD. 
-
-Antispambox integrated both.
-
-### Why not IRSD only?
-
-rspamd scans the mails on my machine very fast and efficient but the detection rate is not as good for me as spamassassin. 
-
-### Features
-
-* Integration of ISBG (spamassassin)
-* Integration of IRSD (rspamd)
-* Integrated PUSH / IMAP IDLE support
-* integrated geo database and filters for it
-* focused on encrypted emails (header analysis only)
-* **custom spamassassin rules for Germany and header analysis (my mails are prefiltered by mailbox.org - this container is only focused to the SPAM the MBO filter does not catch) - so the rules may not match your requirements**
-* In future: Webinterface to configure everything
-* In future: Configure the rspamd webinterface
-* In future: Support multiple IMAP accounts within one container
-
-## Using the container
-
-### building the container
-
-* ```docker build -f Dockerfile -t antispambox . --no-cache```
-
-### starting the container
-
-* ```sudo docker volume create bayesdb```
-
-  ```
-* ```sudo docker volume create accounts```
-
-  ```
-* ```sudo docker run -d --name antispambox --restart always -v bayesdb:/var/spamassassin/bayesdb -v accounts:/root/accounts antispambox```
-
-### workflow and configuration
-
-* To configure the container run:
-  * `docker exec -i -t antispambox /bin/bash`
-  * use nano to configure the /root/accounts/imap_accounts.json
-* startup.py will be directly started with the docker container. To enable the scanning for spam, you need to set in /accounts/imap_accounts.json the enabled flag to True. By deafult this flag will be set to False until the configuration is finished. 
-* First configure you mail account in /root/accounts/imap_accounts.json
-* Train spamassassinn and spamd:
-  * To ensure that spamassassin and spamd bayes filtering is working you should train it at least with 200 SPAM and 200 HAM mails. 
-
-    To train the backends copy your SPAM and HAM messages in the IMAP folders you configured for SPAM_train and HAM_traing.
-* Set the enabled flag in /root/accounts/imap_accounts.json to True.
-* Restart the docker container
-* The docker container will not start with IMAP idle to your INBOX folder and check for new mails. If a SPAM mail is detected, Antispambox will move the SPAM to your JUNK folder.
-* Mails you move manually to SPAM_train will be learned as SPAM. Mails you move manually to HAM_train will learned as HAM.  The backend services spamassassin and rspamd will learn improve their detection rate with each learned mail.
-
-### Hints
-
-* To see how many mails rspamd has already learned or detected as SPAM or HAM, just run: `spamc stat`
-
-* To see how many mails spamassassin has already learned run: `sa-learn --dump magic`
-
-* There is a logfile to see the IMAP idle and scanning process: /var/log/antispambox.log
-
-## TODOs
-
-* see features
-* PEP8 & static code analysis
+## Troubleshooting
+- **No mail is being moved**: Verify `enabled: true` in `imap_accounts.json` and confirm the container has IMAP connectivity (ports/firewall).
+- **Slow delivery**: Ensure training folders contain representative ham/spam samples so both engines can classify accurately; consider tuning IMAP polling interval if not using IDLE.
+- **Permission errors on volumes**: Confirm volumes are attached with correct paths (`/var/spamassassin/bayesdb` and `/root/accounts`) and owned by root inside the container.
 
 ## License
-
-MIT
-
-see license text
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+MIT (see `LICENSE`).
