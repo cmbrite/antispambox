@@ -1,119 +1,128 @@
-import os
-from shutil import copyfile
-import subprocess
+from __future__ import annotations
+
 import json
+import logging
+import os
+from pathlib import Path
+import subprocess
 import sys
+from shutil import copyfile
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger("AntispamboxStartup")
 
 
 def cleanup_file(filename):
     """If file exists, delete it"""
     if os.path.isfile(filename):
         os.remove(filename)
-    else:  ## Show an error ##
-        print("%s does not exist" % filename)
+    else:
+        logger.warning("%s does not exist", filename)
 
 
 def copy_file_if_not_exists(src, dest):
     """Copy the file if it does not exist at the destination"""
     if os.path.isfile(dest):
-        print("%s does already exist - do nothing" % dest)
+        logger.info("%s does already exist - do nothing", dest)
     else:
         copyfile(src, dest)
-        print("%s copied" % dest)
+        logger.info("%s copied", dest)
 
 
 def start_service(servicename):
     """Start a Linux service"""
-    print("startup service %s" % servicename)
-    p = subprocess.Popen(['/usr/sbin/service', servicename, 'start'], stdout=subprocess.PIPE)
-    p.communicate()
-    if p.returncode != 0:
-        print("startup of service %s failed" % servicename)
+    logger.info("startup service %s", servicename)
+    result = subprocess.run(
+        ['/usr/sbin/service', servicename, 'start'],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.error("startup of service %s failed: %s", servicename, result.stderr)
 
 
 def check_imap_configuration():
     """ check if the IMAP account has already been configured"""
-
     try:
-        with open("/root/accounts/imap_accounts.json", 'r') as f:
-            datastore = json.load(f)
-        enabled = datastore["antispambox"]["enabled"]
-        host = datastore["antispambox"]["account"]["server"]
-
-    except IndexError:
-        print("ERROR: was not able to read imap_accounts.json.")
-        sys.exit()
+        config = Path("/root/accounts/imap_accounts.json").read_text(encoding="utf-8")
+        datastore = json.loads(config)
+        enabled = datastore.get("antispambox", {}).get("enabled")
+        host = datastore.get("antispambox", {}).get("account", {}).get("server")
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.error("ERROR: was not able to read imap_accounts.json: %s", exc)
+        sys.exit(1)
 
     if enabled != "True":
-        print("ERROR: Antispambox configuration is not set to enabled - end the service")
-        sys.exit()
+        logger.error("ERROR: Antispambox configuration is not set to enabled - end the service")
+        sys.exit(1)
 
-    if host == "imap.example.net":
-        print("ERROR: no accounts in imap_accounts.json configured - please configure and restart")
-        sys.exit()
+    if not host or host == "imap.example.net":
+        logger.error(
+            "ERROR: no accounts in imap_accounts.json configured - please configure and restart"
+        )
+        sys.exit(1)
 
 
 def fix_permissions():
     """ fix the permissions of the bayes folders"""
-    p = subprocess.Popen(['chown', '-R', 'debian-spamd:mail', '/var/spamassassin'], stdout=subprocess.PIPE)
-    (output, err) = p.communicate()
-    if p.returncode != 0:
-        print("chown failed")
-        print(err)
-        print(output)
-    p = subprocess.Popen(['chmod', 'a+wr', '/var/spamassassin', '-R'], stdout=subprocess.PIPE)
-    (output, err) = p.communicate()
-    if p.returncode != 0:
-        print("chmod failed")
-        print(err)
-        print(output)
+    for command in (
+        ['chown', '-R', 'debian-spamd:mail', '/var/spamassassin'],
+        ['chmod', 'a+wr', '/var/spamassassin', '-R'],
+    ):
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            logger.error(
+                "%s failed: %s", " ".join(command), result.stderr or result.stdout
+            )
 
 
 def download_spamassassin_rules():
     """download the spamassassin rules"""
-    p = subprocess.Popen(['/usr/bin/sa-update', '--no-gpg', '-v', '--channelfile', '/root/sa-channels'],
-                         stdout=subprocess.PIPE)
-    (output, err) = p.communicate()
-    if p.returncode != 0 and p.returncode != 1:
-        print("ERROR: sa-update failed")
-        print(err)
-        print(output)
-
-    p = subprocess.Popen(['/usr/bin/sa-update', '--no-gpg', '-v'], stdout=subprocess.PIPE)
-    (output, err) = p.communicate()
-    if p.returncode != 0 and p.returncode != 1:
-        print("ERROR: sa-update failed")
-        print(err)
-        print(output)
+    for args in (
+        ['/usr/bin/sa-update', '--no-gpg', '-v', '--channelfile', '/root/sa-channels'],
+        ['/usr/bin/sa-update', '--no-gpg', '-v'],
+    ):
+        result = subprocess.run(args, capture_output=True, text=True, check=False)
+        if result.returncode not in (0, 1):
+            logger.error("ERROR: sa-update failed: %s", result.stderr or result.stdout)
 
 
 def start_imap_idle():
-    p = subprocess.Popen(['python3', '/root/antispambox.py'], stdout=subprocess.PIPE)
-    (output, err) = p.communicate()
-    # this will usually run endless
-    if p.returncode != 0:
-        print("ERROR: IMAPIDLE / PUSH / antispambox failed")
-        print(err)
-        print(output)
+    result = subprocess.run(
+        ['python3', '/root/antispambox.py'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        logger.error(
+            "ERROR: IMAPIDLE / PUSH / antispambox failed: %s",
+            result.stderr or result.stdout,
+        )
 
 
-print("\n\n\n ******* STARTUP ANTISPAMBOX ******* \n\n\n")
+logger.info(" ******* STARTUP ANTISPAMBOX ******* ")
 
-print("\n\n *** delete lock files if still existing")
+logger.info(" *** delete lock files if still existing")
 cleanup_file("/var/spamassassin/scan_lock")
 cleanup_file("/root/.cache/isbg/lock")
 cleanup_file("/root/.cache/irsd/lock")
 
-print("\n\n *** copy imap_accounts.json file")
+logger.info(" *** copy imap_accounts.json file")
 copy_file_if_not_exists("/root/imap_accounts.json", "/root/accounts/imap_accounts.json")
 
-print("\n\n *** fixing permissions")
+logger.info(" *** fixing permissions")
 fix_permissions()
 
-print("\n\n *** updating spamassassin rules")
+logger.info(" *** updating spamassassin rules")
 download_spamassassin_rules()
 
-print("\n\n *** start the services")
+logger.info(" *** start the services")
 start_service("rsyslog")
 start_service("redis-server")
 start_service("rspamd")
@@ -121,8 +130,8 @@ start_service("spamassassin")
 start_service("lighttpd")
 start_service("cron")
 
-print("\n\n *** check if the imap account configuration is available and active")
+logger.info(" *** check if the imap account configuration is available and active")
 check_imap_configuration()
 
-print("\n\n *** start of IMAPIDLE / PUSH")
+logger.info(" *** start of IMAPIDLE / PUSH")
 start_imap_idle()

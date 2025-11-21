@@ -13,6 +13,8 @@ COPY files/rspamd_config/* /root/rspamd_config/
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       cron \
+      ca-certificates \
+      gnupg \
       nano \
       python3 \
       python3-pip \
@@ -29,19 +31,19 @@ RUN apt-get update && \
 
 
 # install dependencies for pushtest
-    pip3 install imapclient && \
-    pip3 install isbg && \
+    python3 -m pip install --no-cache-dir --upgrade imapclient==3.0.1 isbg==2.3.1 && \
 
 
 # download and install irsd (as long as it is not pushed to pypi)
-	cd /root && \
-    wget https://codeberg.org/antispambox/IRSD/archive/master.zip && \
-    unzip master.zip && \
+        cd /root && \
+    wget -O irsd-master.zip https://codeberg.org/antispambox/IRSD/archive/master.zip && \
+    echo "4db87e6bb1aaad6441f772966f4aa07c640aff02acc72d7bc7d18b51e6e78dcd  irsd-master.zip" | sha256sum -c - && \
+    unzip irsd-master.zip && \
     cd irsd && \
     python3 setup.py install && \
     cd .. ; \
     rm -Rf /root/irsd ; \
-    rm /root/master.zip ; \
+    rm /root/irsd-master.zip ; \
 
 
 ############################
@@ -90,10 +92,11 @@ RUN apt-get update && \
 #
 # install rspamd
     CODENAME=`lsb_release -c -s` ;\
-    echo "deb [arch=amd64] http://rspamd.com/apt-stable/ $CODENAME main" > /etc/apt/sources.list.d/rspamd.list ;\
-    echo "deb-src [arch=amd64] http://rspamd.com/apt-stable/ $CODENAME main" >> /etc/apt/sources.list.d/rspamd.list ;\
+    wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor > /usr/share/keyrings/rspamd.gpg ;\
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/rspamd.gpg] http://rspamd.com/apt-stable/ $CODENAME main" > /etc/apt/sources.list.d/rspamd.list ;\
+    echo "deb-src [arch=amd64 signed-by=/usr/share/keyrings/rspamd.gpg] http://rspamd.com/apt-stable/ $CODENAME main" >> /etc/apt/sources.list.d/rspamd.list ;\
     apt-get update ;\
-    apt-get --no-install-recommends install -y --allow-unauthenticated rspamd redis-server ;\
+    apt-get --no-install-recommends install -y rspamd redis-server ;\
     # configure rspamd
     #echo "backend = 'redis'" > /etc/rspamd/local.d/classifier-bayes.conf ;\
     #echo "new_schema = true;" >> /etc/rspamd/local.d/classifier-bayes.conf ;\
