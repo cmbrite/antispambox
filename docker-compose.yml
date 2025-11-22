@@ -1,0 +1,14 @@
+services:
+  antispambox:
+    build: .
+    container_name: antispambox
+    restart: unless-stopped
+    volumes:
+      - bayesdb:/var/spamassassin/bayesdb
+      - accounts:/root/accounts
+    ports:
+      - "11334:11334"
+
+volumes:
+  bayesdb:
+  accounts:

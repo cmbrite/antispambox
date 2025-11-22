@@ -127,7 +127,6 @@ start_service("rsyslog")
 start_service("redis-server")
 start_service("rspamd")
 start_service("spamassassin")
-start_service("lighttpd")
 start_service("cron")
 
 logger.info(" *** check if the imap account configuration is available and active")

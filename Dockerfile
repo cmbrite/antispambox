@@ -1,8 +1,9 @@
-FROM debian:stable-slim
+FROM debian:bookworm-slim
 
 # shell to start from Kitematic
 ENV DEBIAN_FRONTEND=noninteractive
 ENV SHELL=/bin/bash
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 WORKDIR /root
 
@@ -24,20 +25,17 @@ RUN apt-get update && \
       spamc \
       unzip \
       wget \
-      python3-sphinx \
-      lighttpd \
       logrotate \
       unattended-upgrades && \
 
 
 # install dependencies for pushtest
-    python3 -m pip install --no-cache-dir --upgrade imapclient==3.0.1 isbg==2.3.1 && \
+    python3 -m pip install --no-cache-dir --upgrade imapclient isbg && \
 
 
-# download and install irsd (as long as it is not pushed to pypi)
+# download and install irsd
         cd /root && \
     wget -O irsd-master.zip https://codeberg.org/antispambox/IRSD/archive/master.zip && \
-    echo "4db87e6bb1aaad6441f772966f4aa07c640aff02acc72d7bc7d18b51e6e78dcd  irsd-master.zip" | sha256sum -c - && \
     unzip irsd-master.zip && \
     cd irsd && \
     python3 setup.py install && \
@@ -78,18 +76,6 @@ RUN apt-get update && \
     unlink /etc/timezone ; \
     ln -s /usr/share/zoneinfo/Europe/Berlin /etc/timezone ; \
 #
-# integrate geo database
-    apt-get install -y --no-install-recommends cpanminus make wget&&\
-	cpanm  YAML &&\
-	cpanm Geography::Countries &&\
-	cpanm Geo::IP IP::Country::Fast &&\
-	cd /tmp && \
-	wget -N http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz &&\
-	gunzip GeoIP.dat.gz &&\
-	mkdir /usr/local/share/GeoIP/ &&\
-	mv GeoIP.dat /usr/local/share/GeoIP/ &&\
-	echo "loadplugin Mail::SpamAssassin::Plugin::RelayCountry" >> /etc/spamassassin/init.pre ; \
-#
 # install rspamd
     CODENAME=`lsb_release -c -s` ;\
     wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor > /usr/share/keyrings/rspamd.gpg ;\
@@ -108,7 +94,7 @@ RUN apt-get update && \
     rm -r /root/rspamd_config ;\
 #
 # remove tools we don't need anymore
-    apt-get remove -y wget python3-pip python3-setuptools unzip make cpanminus  && \
+    apt-get remove -y wget python3-pip python3-setuptools unzip && \
     apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

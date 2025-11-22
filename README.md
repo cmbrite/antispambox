@@ -13,29 +13,20 @@ This project is forked from [rsmuc/antispambox](https://github.com/rsmuc/antispa
 - Persists SpamAssassin Bayes data and account configuration via Docker volumes for easy upgrades.
 
 ## Requirements
-- Docker 20.10+
+- Docker 20.10+ and Docker Compose
 - IMAP credentials for the account you want to protect
-- Two Docker volumes (or bind mounts) for persistent data:
-  - SpamAssassin Bayes database: `/var/spamassassin/bayesdb`
-  - Account configuration: `/root/accounts`
 
 ## Quick start
-1. **Build the image**
-   ```bash
-docker build -f Dockerfile -t antispambox .
-```
-2. **Create the persistent volumes**
-   ```bash
-sudo docker volume create bayesdb
-sudo docker volume create accounts
-```
-3. **Run the container**
-   ```bash
-sudo docker run -d --name antispambox --restart always \
-  -v bayesdb:/var/spamassassin/bayesdb \
-  -v accounts:/root/accounts \
-  antispambox
-```
+
+### Using Docker Compose (Recommended)
+
+1.  **Configure the `docker-compose.yml` (Optional)**
+    The default configuration uses named volumes and exposes Rspamd UI on port 11334.
+
+2.  **Build and Run**
+    ```bash
+    docker-compose up -d --build
+    ```
 
 ## Configure accounts
 1. **Open a shell in the running container**
@@ -54,7 +45,7 @@ docker exec -it antispambox /bin/bash
    - Set `enabled` to `true` for each account in `imap_accounts.json` once training data exists.
 5. **Restart the container** to pick up the configuration.
    ```bash
-sudo docker restart antispambox
+docker restart antispambox
 ```
 
 ## How it works in operation
