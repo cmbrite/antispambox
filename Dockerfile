@@ -38,7 +38,7 @@ RUN apt-get update && \
     wget -O irsd-master.zip https://codeberg.org/antispambox/IRSD/archive/master.zip && \
     unzip irsd-master.zip && \
     cd irsd && \
-    python3 setup.py install && \
+    pip install . && \
     cd .. ; \
     rm -Rf /root/irsd ; \
     rm /root/irsd-master.zip ; \

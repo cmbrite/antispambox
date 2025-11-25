@@ -28,6 +28,28 @@ This project is forked from [rsmuc/antispambox](https://github.com/rsmuc/antispa
     docker-compose up -d --build
     ```
 
+### Using Portainer
+
+1.  **Create a New Stack**
+    -   Name: `antispambox`
+    -   Build method: **Repository**
+    -   Repository URL: (URL to this repository)
+    -   Compose path: `docker-compose.yml`
+    -   Click **Deploy the stack**.
+
+2.  **Configure Accounts**
+    -   Go to the **Containers** list and find `antispambox`.
+    -   Click the **>_ Console** icon (Exec).
+    -   Connect as `root` with `/bin/bash`.
+    -   Edit the config file:
+        ```bash
+        nano /root/accounts/imap_accounts.json
+        ```
+    -   Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
+
+3.  **Apply Configuration**
+    -   Restart the container from the Portainer UI.
+
 ## Configure accounts
 1. **Open a shell in the running container**
    ```bash
