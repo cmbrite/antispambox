@@ -6,8 +6,15 @@ services:
     volumes:
       - bayesdb:/var/spamassassin/bayesdb
       - accounts:/root/accounts
+      # Optional: Bind mount for easier configuration editing on host
+      # - ./config:/root/accounts
     ports:
       - "11334:11334"
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "antispambox.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   bayesdb:
